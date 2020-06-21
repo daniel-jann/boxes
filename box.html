@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>BOX</title>
+	<style>
+		div#app {
+			position: absolute;
+			left: 0;
+			right: 0;
+			top: 0;
+			bottom: 0;
+		}
+		div.box {
+			box-sizing: border-box;
+			position: absolute;
+		}
+		div.handle {
+			width: 10px;
+			height: 10px;
+			position: absolute;
+			border: 1px solid black;
+			z-index: 100000;
+		}
+
+		div#controlPanel {
+			position: absolute;
+			background: #fff;
+			border: 4px solid #3f87c4;
+			opacity: 0.8;
+			z-index: 1;
+		}
+		div#controlPanel th {
+			background-color: #222;
+			color: #fff;
+		}
+		div#controlPanel tr.group {
+			background-color: #ccc;
+		}
+		div.tabs {
+			background: #3f87c4;
+			border-top: 5px solid #3f87c4;
+		}
+		div.tabs a {
+			text-decoration: none;
+			cursor: pointer;
+			padding: 3px 15px;
+			color: #fff;
+			display: inline-block;
+		}
+		div.tabs a.selected {
+			background: #fff;
+			color: #3f87c4;
+		}
+		div.tab-panel {
+			padding: 10px;
+		}
+		ul.steps, ul.boxes {
+			list-style: none;
+			padding: 0;
+			margin: 0;
+		}
+		ul.steps li, ul.boxes li {
+			padding: 5px 20px;
+			cursor: pointer;
+		}
+		ul.steps li.selected, ul.boxes li.selected {
+			background-color: #6badfb;
+		}
+		button.delete {
+			float: right;
+			padding: 0;
+			margin: 0;
+			border: none;
+			background: transparent;
+		}
+		button.add {
+			width: 100% 
+		}
+	</style>
+	<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+</head>
+<body>
+	<div id="app" @dragover.prevent @drop="dragFinish($event)" :style="appliedBodyStyle">
+		<div class="handle" v-for="handle in handles" :style="{'left': handle.left + 'px', 'top': handle.top + 'px'}" @pointerdown="startresizing(handle, $event)" @pointerup="stopresizing(handle, $event)"></div>
+		<div class="box" v-for="box in boxes" @click="selectBox(box)" draggable="true" @dragstart="dragstart(box, $event)" :style="appliedStyle(box)"></div>
+		<div id="controlPanel">
+			<div class="tabs">
+				<a href="#" @click.prevent="selectedTab = tab" :class="{'selected': selectedTab == tab}" v-for="tab in tabs">{{ tab }}</a>
+			</div>
+			<div class="tab-panel">
+				<table>
+					<template v-if="selectedTab == 'Page'" v-for="(s, name) in body.style">
+						<tr v-if="s.values.length > 1">
+							<th><input type="checkbox" v-model="s.enabled" /></th>
+							<th colspan="3">{{ name }}</th>
+						</tr>
+						<tr v-for="item in s.values" :class="{'group': s.values.length > 1}">
+							<td>{{item.id}}</td>
+							<td><input type="range" :min="item.min" :max="item .max" :step="item.step || 1" v-model="item.val" /></td>
+							<td><input type="number" :min="item.min" :max="item.max" :step="item.step || 1" v-model="item.val" /></td>
+						</tr>
+					</template>
+					<template v-if="selectedTab == 'Box' || selectedTab == 'All boxes'" v-for="(s, name) in getStyleToIterate(selectedTab)">
+						<tr v-if="s.values.length > 1">
+							<th><input type="checkbox" v-model="s.enabled" /></th>
+							<th colspan="3">{{ name }}</th>
+						</tr>
+						<tr v-for="item in s.values" :class="{'group': s.values.length > 1}">
+							<td><input type="checkbox" v-if="s.values.length == 1" v-model="s.enabled" /></td>
+							<td>{{item.id}}</td>
+							<td>
+								<input type="range" v-if="typeof item.min != 'undefined'" :min="item.min" :max="item.max" :step="item.step || 1" @input="s.enabled = true" v-model="item.val" />
+								<select v-if="typeof item.enum != 'undefined'" v-model="item.val" @change="s.enabled = true">
+									<option v-for="option in item.enum" :value="option">{{ option }}</option>
+								</select>
+							</td>
+							<td>
+								<input type="number" v-if="typeof item.min != 'undefined'" :min="item.min" :max="item.max" :step="item.step || 1" @input="s.enabled = true" v-model="item.val" />
+							</td>
+						</tr>
+						<!--<tr v-if="s.values.length > 1"><td colspan="3" style="border-top: 1px solid black"></td></tr>-->
+					</template>
+				</table>
+				<div v-if="selectedTab == 'Box'">
+					<ul class="steps">
+						<li v-for="(step, i) in boxes[currentBoxIndex].steps" :class="{'selected': i == currentStep}" @click="currentStep = i">Step {{i + 1}}
+							<button class="delete" v-if="boxes[currentBoxIndex].steps.length > 1" @click="deleteStep(i, $event)">
+								<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+							</button>
+						</li>
+					</ul>
+					<button class="add" @click="addStep">Add step</button>
+				</div>
+				<div v-if="selectedTab == 'Box'">
+					<ul class="boxes">
+						<li v-for="(box, i) in boxes" :class="{'selected': i == currentBoxIndex}" @click="currentBoxIndex = i">
+							Box {{i + 1}}
+							<button class="delete" v-if="boxes.length > 1" @click="deleteBox(i, $event)">
+								<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+							</button>
+						</li>
+					</ul>
+					<button class="add" @click="addBox">Add box</button>
+				</div>
+				<textarea :value="JSON.stringify(boxes)" @input="boxes = JSON.parse($event.target.value)"></textarea>
+			</div>
+		</div>
+	</div>
+	<script>
+		var app = new Vue({
+		  el: '#app',
+		  data: {
+		    select: 'width',
+		    currentStep: 0,
+		    currentBoxIndex: 0,
+		    resizingData: null,
+		    tabs: ['Box','All boxes','Page'],
+		    selectedTab: 'Box',
+		    body: {
+		    	style: {
+		    		'page color': { enabled: true, template: 'background-color: rgb({red},{green},{blue});', values: [
+			    		{id: 'red', val: 255, min: 0, max: 255},
+			    		{id: 'green', val: 255, min: 0, max: 255},
+			    		{id: 'blue', val: 255, min: 0, max: 255}
+			    	]}
+		    	}
+		    },
+		    boxes: [],
+		    allBoxes: { style: null },
+		    style: {
+		    	width:     { enabled: true,  template: 'width: {width}px;', values: [{id: 'width', val: 100, min: 10, max: window.innerWidth}] },
+		    	height:    { enabled: true,  template: 'height: {height}px;', values: [{id: 'height', val: 100, min: 10, max: window.innerHeight}] },
+		    	top:       { enabled: true,  template: 'top: {top}px;', values: [{id: 'top', val: 10, min: 10, max: window.innerHeight}] },
+		    	left:      { enabled: true,  template: 'left: {left}px;', values: [{id: 'left', val: 400, min: 10, max: window.innerWidth}] },
+		    	transform: { enabled: false, template: 'transform: rotate({rotation}deg);', values: [{id: 'rotation', val: 0, min: 0, max: 360}] },
+		    	border:    { enabled: false, template: 'border: {size}px {style} rgb({red},{green},{blue});', values: [
+		    		{id: 'style', val: 'none', enum: ['none','solid','dashed','dotted','double','groove','inset','outset','ridge']},
+		    		{id: 'size', val: 0, min: 0, max: 100},
+		    		{id: 'red', val: 0, min: 0, max: 255},
+		    		{id: 'green', val: 0, min: 0, max: 255},
+		    		{id: 'blue', val: 0, min: 0, max: 255}
+		    	]},
+		    	'rounded borders': { enabled: false, template: 'border-radius: {top-left}px {top-right}px {bottom-left}px {bottom-right}px;', values: [
+		    		{id: 'top-left', val: 0, min: 0, max: 1000},
+		    		{id: 'top-right', val: 0, min: 0, max: 1000},
+		    		{id: 'bottom-left', val: 0, min: 0, max: 1000},
+		    		{id: 'bottom-right', val: 0, min: 0, max: 1000}
+		    	]},
+		    	color: { enabled: true, template: 'background-color: rgb({red},{green},{blue});', values: [
+		    		{id: 'red', val: 0, min: 0, max: 255},
+		    		{id: 'green', val: 0, min: 0, max: 255},
+		    		{id: 'blue', val: 0, min: 0, max: 255}
+		    	]},
+		    	opacity:    { enabled: false, template: 'opacity: {opacity};', values: [{id: 'opacity', val: 1, min: 0, max: 1, step: 0.01}] },
+		    	transition: { enabled: false, template: 'transition-duration: {transition}s;', values: [{id: 'transition', val: 0, min: 0, max: 10, step: 0.05}] },
+		    	zIndex:     { enabled: false, template: 'z-index: {z-index};', values: [{id: 'z-index', val: 0, min: 0, max: 10000}]}
+		    }
+		  },
+		  computed: {
+		  	appliedBodyStyle() {
+		  		return this.getStyleString(this.body.style);
+		  	},
+		  	handles() {
+		  		let boxStyle = this.boxes[this.currentBoxIndex].steps[this.currentStep].style;
+		  		return [
+			  		{
+			  			left: parseInt(this.getCascadingSingleValue(boxStyle,'left')) - 5,
+			  			top: parseInt(this.getCascadingSingleValue(boxStyle,'top')) - 5
+			  		},
+			  		{
+			  			left: parseInt(this.getCascadingSingleValue(boxStyle,'left')) + parseInt(this.getCascadingSingleValue(boxStyle,'width')) - 6,
+			  			top: parseInt(this.getCascadingSingleValue(boxStyle,'top')) - 5
+			  		},
+			  		{
+			  			left: parseInt(this.getCascadingSingleValue(boxStyle,'left')) - 5,
+			  			top: parseInt(this.getCascadingSingleValue(boxStyle,'top')) + parseInt(this.getCascadingSingleValue(boxStyle,'height')) - 6
+			  		},
+			  		{
+			  			left: parseInt(this.getCascadingSingleValue(boxStyle,'left')) + parseInt(this.getCascadingSingleValue(boxStyle,'width')) - 6,
+			  			top: parseInt(this.getCascadingSingleValue(boxStyle,'top')) + parseInt(this.getCascadingSingleValue(boxStyle,'height')) - 6
+			  		}
+		  		];
+		  	}
+		  },
+		  created() {
+		  	this.addBox();
+		  	this.allBoxes.style = this.deepCopy(this.style);
+		  },
+		  methods: {
+		  	getStyleToIterate(selectedTab) {
+		  		if (selectedTab == 'Box')
+		  			return this.boxes[this.currentBoxIndex].steps[this.currentStep].style;
+		  		else
+		  			return this.allBoxes.style;
+		  	},
+		    getCascadingSingleValue(boxStyle, name) {
+		  	  if (boxStyle[name].enabled)
+		  		return boxStyle[name].values[0].val;
+
+		  	  if (this.allBoxes.style[name].enabled)
+		  		return this.allBoxes.style[name].values[0].val;
+
+		  	  return 0;
+		    },
+		  	appliedStyle(box) {
+		  		return this.getStyleString(box.steps[this.currentStep].style, this.allBoxes.style);
+		  	},
+		  	getStyleString(style/*, style2, style3, ... */) {
+		  		let styleString = '';
+		  		for (let i in style) {
+		  			let prop = style[i];
+		  			let s = prop.template;
+		  			let j = 1;
+		  			while (!prop.enabled && j < arguments.length) {
+		  				prop = arguments[j][i];
+		  				j++;
+		  			}
+		  			if (!prop.enabled)
+		  				continue;
+		  				
+		  			prop.values.forEach(value => s = s.replace('{'+value.id+'}', value.val));
+		  			styleString += s;
+		  		}
+		  		return styleString;
+		  	},
+		  	addBox() {
+		  		let steps = []
+		  		if (this.boxes.length == 0)
+		  			steps.push({style: this.deepCopy(this.style)});
+		  		else
+		  			this.boxes[0].steps.forEach(box => steps.push({style: this.deepCopy(this.style)}));
+		  		let box = {
+		  			steps
+		  		};
+		  		this.boxes.push(box);
+		  		this.currentBoxIndex = this.boxes.length - 1;
+		  	},
+		  	addStep() {
+		  		this.boxes.forEach(box => box.steps.push(this.deepCopy(box.steps[box.steps.length - 1])));
+		  	},
+		  	deleteStep(stepIndex, event) {
+		  		event.stopPropagation();
+		  		if (this.currentStep >= this.boxes[0].steps.length - 1)
+		  			this.currentStep--;
+		  		this.boxes.forEach(box => box.steps.splice(stepIndex, 1));
+		  	},
+		  	selectBox(box) {
+		  		this.currentBoxIndex = this.boxes.indexOf(box);
+		  	},
+		  	deleteBox(boxIndex, event) {
+		  		event.stopPropagation();
+		  		if (this.currentBoxIndex >= this.boxes.length - 1)
+		  			this.currentBoxIndex--;
+		  		this.boxes.splice(boxIndex, 1);
+		  	},
+		  	dragstart(box, event) {
+		      event.dataTransfer.setData('boxIndex', this.boxes.indexOf(box));
+		      event.dataTransfer.setData('offsetX', event.x - box.steps[this.currentStep].style.left.values[0].val);
+		      event.dataTransfer.setData('offsetY', event.y - box.steps[this.currentStep].style.top.values[0].val);
+		      event.dataTransfer.dropEffect = 'move';
+		  	},
+		  	dragFinish(event) {
+		  	  let boxIndex = event.dataTransfer.getData('boxIndex');
+		  	  let boxStyle = this.boxes[boxIndex].steps[this.currentStep].style;
+			  boxStyle.left.enabled = true;
+			  boxStyle.top.enabled = true;
+			  boxStyle.width.enabled = true;
+			  boxStyle.height.enabled = true;
+		  	  boxStyle.left.values[0].val = event.x - event.dataTransfer.getData('offsetX');
+		  	  boxStyle.top.values[0].val = event.y - event.dataTransfer.getData('offsetY');
+		  	},
+		  	startresizing(handle, event) {
+		  		let boxStyle = this.boxes[this.currentBoxIndex].steps[this.currentStep].style;
+		  		boxStyle.left.enabled = true;
+		  		boxStyle.top.enabled = true;
+		  		boxStyle.width.enabled = true;
+		  		boxStyle.height.enabled = true;
+		  		this.resizingData = {
+		  			handle: {
+		  				index: this.handles.indexOf(handle),
+		  				offset: {
+		  					x: event.x - boxStyle.left.values[0].val,
+		  					y: event.y - boxStyle.top.values[0].val
+		  				}
+		  			},
+		  			offsetX: event.x - boxStyle.width.values[0].val,
+		  			offsetY: event.y - boxStyle.height.values[0].val,
+		  			initialX2: event.x + boxStyle.width.values[0].val,
+		  			initialY2: event.y + boxStyle.height.values[0].val
+		  		};
+		  		event.target.onpointermove = this.resize;
+  				event.target.setPointerCapture(event.pointerId);
+		  	},
+		  	stopresizing(handle, event) {
+		  		this.resizingData = null;
+				event.target.onpointermove = null;
+				event.target.releasePointerCapture(event.pointerId);
+		  	},
+		  	resize(event) {
+		  		const minSize = 1;
+		  		let boxStyle = this.boxes[this.currentBoxIndex].steps[this.currentStep].style;
+		  		if (this.resizingData.handle.index == 3 || this.resizingData.handle.index == 1)
+			  		boxStyle.width.values[0].val = Math.max(minSize, event.x - this.resizingData.offsetX);
+			  	if (this.resizingData.handle.index == 3 || this.resizingData.handle.index == 2)
+			  		boxStyle.height.values[0].val = Math.max(minSize, event.y - this.resizingData.offsetY);
+			  	if (this.resizingData.handle.index == 0 || this.resizingData.handle.index == 2) {
+			  		boxStyle.left.values[0].val = Math.min(this.resizingData.initialX2 - this.resizingData.handle.offset.x - minSize, event.x - this.resizingData.handle.offset.x);
+			  		boxStyle.width.values[0].val = Math.max(minSize, this.resizingData.initialX2 - event.x);
+			  	}
+			  	if (this.resizingData.handle.index == 0 || this.resizingData.handle.index == 1) {
+			  		boxStyle.top.values[0].val = Math.min(this.resizingData.initialY2 - this.resizingData.handle.offset.y - minSize, event.y - this.resizingData.handle.offset.y);
+			  		boxStyle.height.values[0].val = Math.max(minSize, this.resizingData.initialY2 - event.y);
+			  	}
+		  	},
+		  	deepCopy(obj) {
+		  		return JSON.parse(JSON.stringify(obj));
+		  	}
+		  }
+		})
+	</script>
+</body>
+</html>

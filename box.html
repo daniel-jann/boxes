@@ -11,8 +11,22 @@
 			bottom: 0;
 		}
 		div.box {
+			overflow: hidden;
 			box-sizing: border-box;
 			position: absolute;
+		}
+		canvas {
+			position: absolute;
+			left: -10000px;
+			top: 0;
+		}
+		div.box img {
+			width: 100%;
+			height: 100%;
+		}
+		video {
+			width: 100%;
+			height: 100%;
 		}
 		div.handle {
 			width: 10px;
@@ -73,7 +87,8 @@
 			border: none;
 			background: transparent;
 		}
-		button.add {
+		button.add,
+		button.video {
 			width: 100% 
 		}
 	</style>
@@ -81,8 +96,9 @@
 </head>
 <body>
 	<div id="app" @dragover.prevent @drop="dragFinish($event)" :style="appliedBodyStyle">
+		<canvas ref="canvas"></canvas>
 		<div class="handle" v-for="handle in handles" :style="{'left': handle.left + 'px', 'top': handle.top + 'px'}" @pointerdown="startresizing(handle, $event)" @pointerup="stopresizing(handle, $event)"></div>
-		<div class="box" v-for="box in boxes" @click="selectBox(box)" draggable="true" @dragstart="dragstart(box, $event)" :style="appliedStyle(box)"></div>
+		<div class="box" v-for="(box, index) in boxes" :key="`box-${index}`" ref="boxes" @click="selectBox(box)" draggable="true" @dragstart="dragstart(box, $event)" :style="appliedStyle(box)"><img v-show="box.hasImgData && !box.isVideoPlaying" ref="image" /><video v-show="box.isVideoPlaying" ref="video"></video></div>
 		<div id="controlPanel">
 			<div class="tabs">
 				<a href="#" @click.prevent="selectedTab = tab" :class="{'selected': selectedTab == tab}" v-for="tab in tabs">{{ tab }}</a>
@@ -142,6 +158,11 @@
 					</ul>
 					<button class="add" @click="addBox">Add box</button>
 				</div>
+				<div v-if="selectedTab == 'Box'">
+					<button class="video" v-if="!boxes[currentBoxIndex].isVideoPlaying" @click="startVideo">Start video</button>
+					<button class="video" v-if="boxes[currentBoxIndex].isVideoPlaying" @click="takePicture">Take picture</button>
+					<button class="video" v-if="boxes[currentBoxIndex].isVideoPlaying" @click="stopVideo">Stop video</button>
+				</div>
 				<textarea :value="JSON.stringify(boxes)" @input="boxes = JSON.parse($event.target.value)"></textarea>
 			</div>
 		</div>
@@ -168,8 +189,8 @@
 		    boxes: [],
 		    allBoxes: { style: null },
 		    style: {
-		    	width:     { enabled: true,  template: 'width: {width}px;', values: [{id: 'width', val: 100, min: 10, max: window.innerWidth}] },
-		    	height:    { enabled: true,  template: 'height: {height}px;', values: [{id: 'height', val: 100, min: 10, max: window.innerHeight}] },
+		    	width:     { enabled: true,  template: 'width: {width}px;', values: [{id: 'width', val: 400, min: 10, max: window.innerWidth}] },
+		    	height:    { enabled: true,  template: 'height: {height}px;', values: [{id: 'height', val: 300, min: 10, max: window.innerHeight}] },
 		    	top:       { enabled: true,  template: 'top: {top}px;', values: [{id: 'top', val: 10, min: 10, max: window.innerHeight}] },
 		    	left:      { enabled: true,  template: 'left: {left}px;', values: [{id: 'left', val: 400, min: 10, max: window.innerWidth}] },
 		    	transform: { enabled: false, template: 'transform: rotate({rotation}deg);', values: [{id: 'rotation', val: 0, min: 0, max: 360}] },
@@ -263,6 +284,51 @@
 		  		}
 		  		return styleString;
 		  	},
+		  	startVideo() {
+		  		navigator.mediaDevices.getUserMedia({
+		  			video: true, audio: false
+		  		})
+		  		.then(stream => {
+		  			let video = this.$refs.video[this.currentBoxIndex];
+		  			video.srcObject = stream;
+		  			video.play();
+		  			this.boxes[this.currentBoxIndex].isVideoPlaying = true;
+		  		});
+		  	},
+		  	stopVideo(boxIndex) {
+		  		if(isNaN(boxIndex))
+		  			boxIndex = this.currentBoxIndex;
+
+		  		let video = this.$refs.video[boxIndex];
+		  		console.log(boxIndex, this.currentBoxIndex, this.$refs.video);
+		  		let stream = video.srcObject;
+		  		if (stream) {
+			  		stream.getTracks().forEach(function(track) {
+					  track.stop();
+					});
+			  	}
+		  		video.srcObject = null;		  	
+		  		this.boxes[boxIndex].isVideoPlaying = false;
+		  	},
+		  	takePicture() {
+		  		let canvas = this.$refs.canvas;
+		  		let video = this.$refs.video[this.currentBoxIndex];
+		  		let width = parseInt(this.$refs.boxes[this.currentBoxIndex].style.width);
+		  		let height = parseInt(this.$refs.boxes[this.currentBoxIndex].style.height);
+		  		let context = canvas.getContext('2d');
+		  		canvas.setAttribute('width', width);
+		  		canvas.setAttribute('height', height);
+		  		canvas.width = width;
+		  		canvas.height = height;
+		  		context.drawImage(video, 0, 0, width, height);
+		  		
+		  		let data = canvas.toDataURL('image/png');
+
+		  		this.boxes[this.currentBoxIndex].hasImgData = true;
+		  		this.$refs.image[this.currentBoxIndex].setAttribute('src', data);
+
+		  		this.stopVideo();
+		  	},
 		  	addBox() {
 		  		let steps = []
 		  		if (this.boxes.length == 0)
@@ -270,7 +336,9 @@
 		  		else
 		  			this.boxes[0].steps.forEach(box => steps.push({style: this.deepCopy(this.style)}));
 		  		let box = {
-		  			steps
+		  			steps,
+		  			hasImgData: false,
+		  			isVideoPlaying: false
 		  		};
 		  		this.boxes.push(box);
 		  		this.currentBoxIndex = this.boxes.length - 1;
@@ -289,8 +357,18 @@
 		  	},
 		  	deleteBox(boxIndex, event) {
 		  		event.stopPropagation();
+		  		this.stopVideo(boxIndex);
 		  		if (this.currentBoxIndex >= this.boxes.length - 1)
 		  			this.currentBoxIndex--;
+		  		
+		  		// video streams and images for boxes after the one deleted need to be moved 
+		  		// one down. They don't follow automatically.
+		  		for(let i = boxIndex + 1; i < this.boxes.length; i++) {
+		  			this.$refs.image[i - 1].src = this.$refs.image[i].src;
+		  			this.$refs.video[i - 1].srcObject = this.$refs.video[i].srcObject;
+		  			if (this.$refs.video[i - 1].srcObject)
+		  				this.$refs.video[i - 1].play();
+		  		}
 		  		this.boxes.splice(boxIndex, 1);
 		  	},
 		  	dragstart(box, event) {

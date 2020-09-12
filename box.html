@@ -91,6 +91,30 @@
 		button.video {
 			width: 100% 
 		}
+		div.overlay {
+		    left: 0;
+		    top: 0;
+		    background: #000;
+		    opacity: 0.7;
+		    position: fixed;
+		    right: 0;
+		    bottom: 0;
+		    z-index: 10000000000;
+		}
+		div.overlay + div {
+		    z-index: 10000000001;
+		    background: #fff;
+		    position: fixed;
+		    left: calc(50% - 220px);
+		    width: 400px;
+		    text-align: center;
+		    padding: 10px;
+		}
+		#windowLoadFromBrowser ul {
+			list-style-type: none;
+			padding: 0;
+			margin: 20px 0;
+		}
 	</style>
 	<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
 </head>
@@ -99,6 +123,21 @@
 		<canvas ref="canvas"></canvas>
 		<div class="handle" v-for="handle in handles" :style="{'left': handle.left + 'px', 'top': handle.top + 'px'}" @pointerdown="startresizing(handle, $event)" @pointerup="stopresizing(handle, $event)"></div>
 		<div class="box" v-for="(box, index) in boxes" :key="`box-${index}`" ref="boxes" @click="selectBox(box)" draggable="true" @dragstart="dragstart(box, $event)" :style="appliedStyle(box)"><img v-show="box.hasImgData && !box.isVideoPlaying" ref="image" /><video v-show="box.isVideoPlaying" ref="video"></video></div>
+
+		<div id="windowLoadFromBrowser" v-if="windows.loadFromBrowser.visible">
+			<div class="overlay">
+			</div>
+			<div>
+				Whatcha wanna load ?
+				<ul>
+					<li v-for="masterpiece in windows.loadFromBrowser.masterpieces" :key="masterpiece.id">
+						<a href="#" @click="loadFromBrowser($event, masterpiece)">{{ masterpiece.name }}</a>
+					</li>
+				</ul>
+				<button @click="windows.loadFromBrowser.visible = false">Nah, forget it.</button>
+			</div>
+		</div>
+
 		<div id="controlPanel">
 			<div class="tabs">
 				<a href="#" @click.prevent="selectedTab = tab" :class="{'selected': selectedTab == tab}" v-for="tab in tabs">{{ tab }}</a>
@@ -136,6 +175,12 @@
 						</tr>
 						<!--<tr v-if="s.values.length > 1"><td colspan="3" style="border-top: 1px solid black"></td></tr>-->
 					</template>
+					<template v-if="selectedTab == 'Menu'">
+						<tr>
+							<td><button @click="saveInBrowser">Save in browser</button></td>
+							<td><button @click="showLoadFromBrowserWindow">Load from browser</button></td>
+						</tr>
+					</template>
 				</table>
 				<div v-if="selectedTab == 'Box'">
 					<ul class="steps">
@@ -171,11 +216,16 @@
 		var app = new Vue({
 		  el: '#app',
 		  data: {
+		  	windows: {
+		  		loadFromBrowser: {
+		  			visible: false
+		  		}
+		  	},
 		    select: 'width',
 		    currentStep: 0,
 		    currentBoxIndex: 0,
 		    resizingData: null,
-		    tabs: ['Box','All boxes','Page'],
+		    tabs: ['Box','All boxes','Page','Menu'],
 		    selectedTab: 'Box',
 		    body: {
 		    	style: {
@@ -300,7 +350,6 @@
 		  			boxIndex = this.currentBoxIndex;
 
 		  		let video = this.$refs.video[boxIndex];
-		  		console.log(boxIndex, this.currentBoxIndex, this.$refs.video);
 		  		let stream = video.srcObject;
 		  		if (stream) {
 			  		stream.getTracks().forEach(function(track) {
@@ -430,9 +479,66 @@
 			  		boxStyle.height.values[0].val = Math.max(minSize, this.resizingData.initialY2 - event.y);
 			  	}
 		  	},
+		  	saveInBrowser() {
+		  		if (!localStorage) {
+		  			alert("Sorry bud, yo' browser ain't support saving in its little brain...");
+		  			return;
+		  		}
+
+		  		let name = prompt("How will ya name yo' sweet master piece ?");
+		  		if (name == null || name == '')
+		  			return;
+
+		  		let masterpiece = JSON.stringify(this.boxes);
+
+		  		let masterpieces = JSON.parse(localStorage.getItem('masterpieces') || "[]");
+		  		let ohNoSameName = masterpieces.filter(masterpiece => masterpiece.name == name);
+		  		if (ohNoSameName.length > 0) {
+		  			if (confirm("Hey bud, I already found a master piece with that name. Ima replace it with yours !")) {
+		  				localStorage.setItem(ohNoSameName[0].id, masterpiece);
+		  				alert("It's in the box, bud !");
+		  			}
+
+		  			return;
+		  		}
+
+		  		let id = this.uuidv4();
+		  		masterpieces.push({ name: name, id: id });
+		  		localStorage.setItem(id, masterpiece);
+		  		localStorage.setItem('masterpieces', JSON.stringify(masterpieces));
+		  		alert("It's in the box, bud !");
+		  	},
+		  	showLoadFromBrowserWindow() {
+		  		if (!localStorage) {
+		  			alert("Sorry bud, yo' browser ain't support saving in its little brain...");
+		  			return;
+		  		}
+
+		  		let masterpieces = localStorage.getItem('masterpieces');
+		  		if (masterpieces == null)
+		  		{
+		  			alert("Sorry bud, y'aint got nothing saved in that browser.")
+		  			return;
+		  		}
+		  		masterpieces = JSON.parse(masterpieces);
+
+		  		this.windows.loadFromBrowser.masterpieces = masterpieces;
+		  		this.windows.loadFromBrowser.visible = true;
+		  	},
+		  	loadFromBrowser(event, masterpiece) {
+		  		event.preventDefault();
+		  		this.boxes = JSON.parse(localStorage.getItem(masterpiece.id));
+		  		this.windows.loadFromBrowser.visible = false;
+		  	},
 		  	deepCopy(obj) {
 		  		return JSON.parse(JSON.stringify(obj));
-		  	}
+		  	},
+		  	uuidv4() {
+			  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+			    let r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+			    return v.toString(16);
+			  });
+			}
 		  }
 		})
 	</script>

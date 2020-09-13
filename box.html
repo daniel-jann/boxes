@@ -354,9 +354,13 @@
 		  		let video = this.$refs.video[boxIndex];
 		  		let stream = video.srcObject;
 		  		if (stream) {
-			  		stream.getTracks().forEach(function(track) {
-					  track.stop();
-					});
+		  			const reducer = (accumulator, theVideo) => accumulator || (theVideo !== video && theVideo.srcObject === stream);
+		  			let isStreamUsedByAnotherBox = this.$refs.video.reduce(reducer, false);
+
+			  		if (!isStreamUsedByAnotherBox)
+				  		stream.getTracks().forEach(function(track) {
+						  track.stop();
+						});
 			  	}
 		  		video.srcObject = null;		  	
 		  		this.boxes[boxIndex].isVideoPlaying = false;
@@ -399,9 +403,32 @@
 		  		this.currentBoxIndex = this.boxes.length - 1;
 		  	},
 		  	duplicateBox() {
-		  		let duplicatedBox = this.deepCopy(this.boxes[this.currentBoxIndex]);
+		  		let indexOfBoxToDuplicate = this.currentBoxIndex;
+		  		let duplicatedBox = this.deepCopy(this.boxes[indexOfBoxToDuplicate]);
 		  		this.boxes.push(duplicatedBox);
 		  		this.currentBoxIndex = this.boxes.length - 1;
+
+		  		// Duplicate image if there is one
+		  		if (duplicatedBox.hasImgData)
+			  		this.$nextTick(() => {
+			  			let src = this.$refs.image[indexOfBoxToDuplicate].getAttribute('src');
+			  			this.$refs.image[this.currentBoxIndex].setAttribute('src', src);
+			  		});
+
+		  		// Duplicate video stream if there is one
+			  	if (duplicatedBox.isVideoPlaying)
+			  		this.$nextTick(() => {
+			  			let stream = this.$refs.video[indexOfBoxToDuplicate].srcObject;
+			  			let video = this.$refs.video[this.currentBoxIndex];
+			  			try {
+				  			video.srcObject = stream;
+				  			video.play();
+				  		}
+				  		catch (error) {
+				  			this.boxes[this.currentBoxIndex].isVideoPlaying = false;
+				  		}
+			  		});
+
 		  	},
 		  	addStep() {
 		  		this.boxes.forEach(box => box.steps.push(this.deepCopy(box.steps[box.steps.length - 1])));

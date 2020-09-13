@@ -207,6 +207,7 @@
 				<div v-if="selectedTab == 'Box'">
 					<button class="video" v-if="!boxes[currentBoxIndex].isVideoPlaying" @click="startVideo">Start video</button>
 					<button class="video" v-if="boxes[currentBoxIndex].isVideoPlaying" @click="takePicture">Take picture</button>
+					<button class="video" v-if="boxes[currentBoxIndex].hasImgData" @click="removePicture">Remove picture</button>
 					<button class="video" v-if="boxes[currentBoxIndex].isVideoPlaying" @click="stopVideo">Stop video</button>
 				</div>
 				<textarea :value="JSON.stringify(boxes)" @input="boxes = JSON.parse($event.target.value)"></textarea>
@@ -378,6 +379,10 @@
 		  		this.$refs.image[this.currentBoxIndex].setAttribute('src', data);
 
 		  		this.stopVideo();
+		  	},
+		  	removePicture() {
+		  		this.boxes[this.currentBoxIndex].hasImgData = false;
+		  		this.$refs.image[this.currentBoxIndex].setAttribute('src', '');
 		  	},
 		  	addBox() {
 		  		let steps = []

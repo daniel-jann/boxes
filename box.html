@@ -202,6 +202,7 @@
 						</li>
 					</ul>
 					<button class="add" @click="addBox">Add box</button>
+					<button class="add" @click="duplicateBox" v-if="boxes.length > 0">Duplicate box</button>
 				</div>
 				<div v-if="selectedTab == 'Box'">
 					<button class="video" v-if="!boxes[currentBoxIndex].isVideoPlaying" @click="startVideo">Start video</button>
@@ -390,6 +391,11 @@
 		  			isVideoPlaying: false
 		  		};
 		  		this.boxes.push(box);
+		  		this.currentBoxIndex = this.boxes.length - 1;
+		  	},
+		  	duplicateBox() {
+		  		let duplicatedBox = this.deepCopy(this.boxes[this.currentBoxIndex]);
+		  		this.boxes.push(duplicatedBox);
 		  		this.currentBoxIndex = this.boxes.length - 1;
 		  	},
 		  	addStep() {

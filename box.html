@@ -155,23 +155,44 @@
 							<td><input type="number" :min="item.min" :max="item.max" :step="item.step || 1" v-model="item.val" /></td>
 						</tr>
 					</template>
-					<template v-if="selectedTab == 'Box' || selectedTab == 'All boxes'" v-for="(s, name) in getStyleToIterate(selectedTab)">
-						<tr v-if="s.values.length > 1">
-							<th><input type="checkbox" v-model="s.enabled" /></th>
-							<th colspan="3">{{ name }}</th>
-						</tr>
-						<tr v-for="item in s.values" :class="{'group': s.values.length > 1}">
-							<td><input type="checkbox" v-if="s.values.length == 1" v-model="s.enabled" /></td>
-							<td>{{item.id}}</td>
-							<td>
-								<input type="range" v-if="typeof item.min != 'undefined'" :min="item.min" :max="item.max" :step="item.step || 1" @input="s.enabled = true" v-model="item.val" />
-								<select v-if="typeof item.enum != 'undefined'" v-model="item.val" @change="s.enabled = true">
-									<option v-for="option in item.enum" :value="option">{{ option }}</option>
-								</select>
-							</td>
-							<td>
-								<input type="number" v-if="typeof item.min != 'undefined'" :min="item.min" :max="item.max" :step="item.step || 1" @input="s.enabled = true" v-model="item.val" />
-							</td>
+					<template v-if="selectedTab == 'Box' || selectedTab == 'All boxes'" v-for="(s1, name1) in getStyleToIterate(selectedTab)">
+						<template v-for="(s, name) in getSubstyleToIterate(s1, name1)">
+							<tr v-if="s.values.length > 1 || s1.options">
+								<th>
+									<input type="checkbox" v-if="!s1.options" v-model="s.enabled" />
+									<button class="delete" v-if="s1.options && s1.values.length > 1" @click="deleteValue(s1.values, s)"><svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="#fff"/></svg></button>
+								</th>
+								<th colspan="3">{{ name }}</th>
+							</tr>
+							<tr v-if="s1.options" class="group">
+								<td></td>
+								<td>{{ name1 }}</td>
+								<td>
+									<select v-model="s.id" @change="updateStyleFromOptionsBasedOnId(s, s1.options, s.id)">
+										<option value="">none</option>
+										<option v-for="option in s1.options" :value="option.id">{{ option.id }}</option>
+									</select>
+								</td>
+								<td></td>
+							</tr>
+							<tr v-for="item in s.values" :class="{'group': s.values.length > 1 || s1.options}">
+								<td>
+									<input type="checkbox" v-if="s.values.length == 1 && !s1.options" v-model="s.enabled" />
+								</td>
+								<td>{{item.id}}</td>
+								<td>
+									<input type="range" v-if="typeof item.min != 'undefined'" :min="item.min" :max="item.max" :step="item.step || 1" @input="s.enabled = true" v-model="item.val" />
+									<select v-if="typeof item.enum != 'undefined'" v-model="item.val" @change="s.enabled = true">
+										<option v-for="option in item.enum" :value="option">{{ option }}</option>
+									</select>
+								</td>
+								<td>
+									<input type="number" v-if="typeof item.min != 'undefined'" :min="item.min" :max="item.max" :step="item.step || 1" @input="s.enabled = true" v-model="item.val" />
+								</td>
+							</tr>
+						</template>
+						<tr v-if="s1.options">
+							<td colspan="4"><button class="add" @click="addValue(s1)">+</button></td>
 						</tr>
 						<!--<tr v-if="s.values.length > 1"><td colspan="3" style="border-top: 1px solid black"></td></tr>-->
 					</template>
@@ -235,7 +256,8 @@
 			    		{id: 'red', val: 255, min: 0, max: 255},
 			    		{id: 'green', val: 255, min: 0, max: 255},
 			    		{id: 'blue', val: 255, min: 0, max: 255}
-			    	]}
+			    	]},
+			    	perspective: { enabled: true, template: 'perspective: {perspective}px', values: [{id: 'perspective', val: 1000, min: 0, max: 1000}]}
 		    	}
 		    },
 		    boxes: [],
@@ -245,7 +267,7 @@
 		    	height:    { enabled: true,  template: 'height: {height}px;', values: [{id: 'height', val: 300, min: 10, max: window.innerHeight}] },
 		    	top:       { enabled: true,  template: 'top: {top}px;', values: [{id: 'top', val: 10, min: 10, max: window.innerHeight}] },
 		    	left:      { enabled: true,  template: 'left: {left}px;', values: [{id: 'left', val: 400, min: 10, max: window.innerWidth}] },
-		    	transform: { enabled: false, template: 'transform: rotate({rotation}deg);', values: [{id: 'rotation', val: 0, min: 0, max: 360}] },
+		    	/*transform: { enabled: false, template: 'transform: rotate({rotation}deg);', values: [{id: 'rotation', val: 0, min: 0, max: 360}] },*/
 		    	border:    { enabled: false, template: 'border: {size}px {style} rgb({red},{green},{blue});', values: [
 		    		{id: 'style', val: 'none', enum: ['none','solid','dashed','dotted','double','groove','inset','outset','ridge']},
 		    		{id: 'size', val: 0, min: 0, max: 100},
@@ -263,6 +285,14 @@
 		    		{id: 'red', val: 0, min: 0, max: 255},
 		    		{id: 'green', val: 0, min: 0, max: 255},
 		    		{id: 'blue', val: 0, min: 0, max: 255}
+		    	]},
+		    	transform:  { enabled: true, template: 'transform: {values};', values: [{id: "", template: "", values: []}], options:[
+		    		{ id: 'rotateX', template: 'rotateX({angle}deg) ', values: [{id: 'angle', val: 0, min: 0, max: 360}] },
+		    		{ id: 'rotateY', template: 'rotateY({angle}deg) ', values: [{id: 'angle', val: 0, min: 0, max: 360}] },
+		    		{ id: 'rotateZ', template: 'rotateZ({angle}deg) ', values: [{id: 'angle', val: 0, min: 0, max: 360}] },
+		    		{ id: 'translateX', template: 'translateX({translateX}px) ', values: [{id: 'translateX', val: 0, min: -1000, max: 1000}] },
+		    		{ id: 'translateY', template: 'translateY({translateY}px) ', values: [{id: 'translateY', val: 0, min: -1000, max: 1000}] },
+		    		{ id: 'translateZ', template: 'translateZ({translateZ}px) ', values: [{id: 'translateZ', val: 0, min: -1000, max: 1000}] }
 		    	]},
 		    	opacity:    { enabled: false, template: 'opacity: {opacity};', values: [{id: 'opacity', val: 1, min: 0, max: 1, step: 0.01}] },
 		    	transition: { enabled: false, template: 'transition-duration: {transition}s;', values: [{id: 'transition', val: 0, min: 0, max: 10, step: 0.05}] },
@@ -306,6 +336,16 @@
 		  		else
 		  			return this.allBoxes.style;
 		  	},
+		  	getSubstyleToIterate(s, name) {
+		  		if (!s.options)
+		  			return {[name]: s};
+
+		  		let substyles = {};
+		  		for (let i = 0; i < s.values.length; i++) {
+		  			substyles[name + " " + (i+1)] = s.values[i]; 
+		  		}
+		  		return substyles;
+		  	},
 		    getCascadingSingleValue(boxStyle, name) {
 		  	  if (boxStyle[name].enabled)
 		  		return boxStyle[name].values[0].val;
@@ -314,6 +354,18 @@
 		  		return this.allBoxes.style[name].values[0].val;
 
 		  	  return 0;
+		    },
+		    updateStyleFromOptionsBasedOnId(style, options, id) {
+		    	let option = options.find(opt => opt.id == id) || { values: [], template: "" };
+		    	style.template = option.template;
+		    	style.values = option.values;
+		    },
+		    addValue(style) {
+		    	style.values.push({id: "", template: "", values: []})
+		    },
+		    deleteValue(values, style) {
+		    	let index = values.indexOf(style);
+		    	values.splice(index, 1);
 		    },
 		  	appliedStyle(box) {
 		  		return this.getStyleString(box.steps[this.currentStep].style, this.allBoxes.style);
@@ -331,7 +383,16 @@
 		  			if (!prop.enabled)
 		  				continue;
 		  				
-		  			prop.values.forEach(value => s = s.replace('{'+value.id+'}', value.val));
+		  			if (prop.options) {
+		  				let templates = [];
+		  				for (let valueIndex = 0; valueIndex < prop.values.length; valueIndex++) {
+		  					templates.push(prop.values[valueIndex].template);
+			  				prop.values[valueIndex].values.forEach(value => templates[valueIndex] = templates[valueIndex].replace('{'+value.id+'}', value.val));
+			  			}
+			  			s = s.replace('{values}', templates.join(''));
+		  			}
+		  			else
+		  				prop.values.forEach(value => s = s.replace('{'+value.id+'}', value.val));
 		  			styleString += s;
 		  		}
 		  		return styleString;
